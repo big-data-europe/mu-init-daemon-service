@@ -45,6 +45,25 @@ end
 
 
 ###
+# Finish the execution of a step in a pipeline.
+# The step is specified through the step query param.
+# E.g. /finish?step="hdfs_init"
+###
+put '/finish' do
+  error('Step query parameter is required') if params['step'].nil? or params['step'].empty?
+
+  result = select_step_by_code(params['step']) 
+  error("No step found with code '#{params['step']}'") if result.empty?
+  step = result.first[:step].to_s
+
+  update_step_status(step, settings.step_status[:done])
+
+  status 204
+end
+
+
+
+###
 # Helpers
 ###
 
