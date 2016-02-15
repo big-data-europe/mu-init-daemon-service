@@ -17,6 +17,8 @@ POC = RDF::Vocabulary.new('http://www.big-data-europe.eu/vocabularies/poc/')
 # E.g. /canStart?step="hdfs_init"
 ###
 get '/canStart' do
+  content_type 'text/plain'
+  
   error('Step query parameter is required') if params['step'].nil? or params['step'].empty?
   error("No step found with code '#{params['step']}'") if not ask_if_step_code_exists(params['step'])
   
@@ -31,7 +33,7 @@ end
 # The step is specified through the step query param.
 # E.g. /execute?step="hdfs_init"
 ###
-put '/execute' do
+put '/execute' do  
   error('Step query parameter is required') if params['step'].nil? or params['step'].empty?
 
   result = select_step_by_code(params['step']) 
