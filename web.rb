@@ -7,7 +7,7 @@ end
 ###
 
 PWO = RDF::Vocabulary.new('http://purl.org/spar/pwo/')
-POC = RDF::Vocabulary.new('http://www.big-data-europe.eu/vocabularies/poc/')
+PIP = RDF::Vocabulary.new('http://www.big-data-europe.eu/vocabularies/pipeline/')
 
 
 
@@ -74,7 +74,7 @@ helpers do
   def ask_if_step_code_exists(step_code)
     query = " ASK FROM <#{settings.graph}> WHERE {"
     query += "  ?step a <#{PWO.Step}> ; "
-    query += "    <#{POC.code}> '#{step_code.downcase}' . "
+    query += "    <#{PIP.code}> '#{step_code.downcase}' . "
     query += " }"
     query(query)    
   end
@@ -82,7 +82,7 @@ helpers do
   def select_step_by_code(step_code)
     query = " SELECT ?step FROM <#{settings.graph}> WHERE {"
     query += "  ?step a <#{PWO.Step}> ; "
-    query += "    <#{POC.code}> '#{step_code.downcase}' . "
+    query += "    <#{PIP.code}> '#{step_code.downcase}' . "
     query += " }"
     query(query)    
   end
@@ -92,11 +92,11 @@ helpers do
     query += "  ?pipeline a <#{PWO.Workflow}> ; "
     query += "    <#{PWO.hasStep}> ?step, ?prev_step . "
     query += "  ?step a <#{PWO.Step}> ; "
-    query += "    <#{POC.code}> '#{step_code.downcase}' ; "
-    query += "    <#{POC.order}> ?sequence . "
+    query += "    <#{PIP.code}> '#{step_code.downcase}' ; "
+    query += "    <#{PIP.order}> ?sequence . "
     query += "  ?prev_step a <#{PWO.Step}> ; "
-    query += "    <#{POC.order}> ?prev_sequence ; "
-    query += "    <#{POC.status}> ?prev_status . "
+    query += "    <#{PIP.order}> ?prev_sequence ; "
+    query += "    <#{PIP.status}> ?prev_status . "
     query += "  FILTER(?prev_sequence < ?sequence) "
     query += "  FILTER(?prev_status != '#{settings.step_status[:done]}') "
     query += " }"
@@ -106,10 +106,10 @@ helpers do
   def delete_step_status(step)
     query =  " WITH <#{settings.graph}> "
     query += " DELETE {"
-    query += "   <#{step}> <#{POC.status}> ?status ."
+    query += "   <#{step}> <#{PIP.status}> ?status ."
     query += " }"
     query += " WHERE {"
-    query += "   <#{step}> <#{POC.status}> ?status ."
+    query += "   <#{step}> <#{PIP.status}> ?status ."
     query += " }"
     update(query)
   end
@@ -117,7 +117,7 @@ helpers do
   def insert_step_status(step, status)
     query =  " INSERT DATA {"
     query += "   GRAPH <#{settings.graph}> {"
-    query += "     <#{step}> <#{POC.status}> '#{status}' ."
+    query += "     <#{step}> <#{PIP.status}> '#{status}' ."
     query += "   }"
     query += " }"
     update(query)
