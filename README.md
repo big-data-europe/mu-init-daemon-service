@@ -24,7 +24,7 @@ Add the following snippet to your `docker-compose.yml` to include the init-daemo
 
 ```
 initdaemon:
-  image: bde2020/init-daemon-service
+  image: bde2020/mu-init-daemon-service
   links:
     - database:database
 ```
