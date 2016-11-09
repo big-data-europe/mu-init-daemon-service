@@ -2,11 +2,35 @@
 Microservice to report the progress of a service's initialization process.
 
 ## Available requests
+Indication of the state can happen in two main ways.  The first way describes processes which finish, the second describes processes which may keep running forever.
+
+### Types of processes and their states
+Processes which finish generally have the following states:
+
+- not_started
+- starting (see /boot)
+- running  (see /execute)
+- done (see /finish)
+
+Processes which accept requests tend to have the following states:
+
+- not_started
+- starting (see /boot)
+- ready (see /ready)
+
+All processes may end in a 'failed' state, which locks further steps to start automatically.  See /fail.
+
+### Overview of available calls
 
 #### GET /canStart
 Validate if a given step (specified by its code) of a pipeline can be started. The step is specified through the step query param. Returns `"true"` or `"false"` as `text/plain` on success.
 
 _E.g. /canStart?step="hdfs_init"_
+
+### PUT /boot
+Starts the booting of a step in the pipeline.  The step is specified through the step query param. Returns `204` on success.
+
+_E.g. /boot?step="hdfs_init"_
 
 #### PUT /execute
 Start the execution of a step in a pipeline. The step is specified through the step query param. Returns `204` on success.
@@ -17,6 +41,16 @@ _E.g. /execute?step="hdfs_init"_
 Finish the execution of a step in a pipeline. The step is specified through the step query param. Returns `204` on success.
 
 _E.g. /finish?step="hdfs_init"_
+
+#### PUT /ready
+Indicates a component is ready to accept requests in a pipeline. The step is specified through the step query param. Returns `204` on success.
+
+_E.g. /ready?step="hdfs_init"_
+
+#### PUT /fail
+Indicates a component failed. The step is specified through the step query param. Returns `204` on success.
+
+_E.g. /fail?step="hdfs_init"_
 
 
 ## Integrate init-daemon service in a mu.semte.ch project

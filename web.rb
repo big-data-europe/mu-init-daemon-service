@@ -1,5 +1,5 @@
 configure do
-  set :step_status, { not_started: 'not_started', running: 'running', done: 'done' }
+  set :step_status, { not_started: 'not_started', starting: 'starting', running: 'running', ready: 'ready', done: 'done', failed: 'failed' }
 end
 
 ###
@@ -18,25 +18,41 @@ PIP = RDF::Vocabulary.new('http://www.big-data-europe.eu/vocabularies/pipeline/'
 ###
 get '/canStart' do
   content_type 'text/plain'
-  
+
   error('Step query parameter is required') if params['step'].nil? or params['step'].empty?
   error("No step found with code '#{params['step']}'") if not ask_if_step_code_exists(params['step'])
-  
+
   previous_steps_are_done = !ask_if_previous_steps_are_not_done(params['step'])
 
   (previous_steps_are_done).to_s
 end
 
+###
+# Starts the [optional] starting phase of a step in a pipeline.
+# The step is specified through the step query param.
+# E.g. /boot?step="hdfs_init"
+###
+put '/boot' do
+  error('Step query parameter is required') if params['step'].nil? or params['step'].empty?
+
+  result = select_step_by_code(params['step'])
+  error("No step found with code '#{params['step']}'") if result.empty?
+  step = result.first[:step].to_s
+
+  update_step_status(step, settings.step_status[:starting])
+
+  status 204
+end
 
 ###
 # Start the execution of a step in a pipeline.
 # The step is specified through the step query param.
 # E.g. /execute?step="hdfs_init"
 ###
-put '/execute' do  
+put '/execute' do
   error('Step query parameter is required') if params['step'].nil? or params['step'].empty?
 
-  result = select_step_by_code(params['step']) 
+  result = select_step_by_code(params['step'])
   error("No step found with code '#{params['step']}'") if result.empty?
   step = result.first[:step].to_s
 
@@ -45,6 +61,22 @@ put '/execute' do
   status 204
 end
 
+###
+# Sets the ready state of a step in a pipeline.
+# The step is specified through the step query param.
+# E.g. /ready?step="hdfs_init"
+###
+put '/ready' do
+  error('Step query parameter is required') if params['step'].nil? or params['step'].empty?
+
+  result = select_step_by_code(params['step'])
+  error("No step found with code '#{params['step']}'") if result.empty?
+  step = result.first[:step].to_s
+
+  update_step_status(step, settings.step_status[:ready])
+
+  status 204
+end
 
 ###
 # Finish the execution of a step in a pipeline.
@@ -54,7 +86,7 @@ end
 put '/finish' do
   error('Step query parameter is required') if params['step'].nil? or params['step'].empty?
 
-  result = select_step_by_code(params['step']) 
+  result = select_step_by_code(params['step'])
   error("No step found with code '#{params['step']}'") if result.empty?
   step = result.first[:step].to_s
 
@@ -63,6 +95,22 @@ put '/finish' do
   status 204
 end
 
+###
+# Indicates failure of the execution of a step in a pipeline.
+# The step is specified through the step query param.
+# E.g. /fail?step="hdfs_init"
+###
+put '/fail' do
+  error('Step query parameter is required') if params['step'].nil? or params['step'].empty?
+
+  result = select_step_by_code(params['step'])
+  error("No step found with code '#{params['step']}'") if result.empty?
+  step = result.first[:step].to_s
+
+  update_step_status(step, settings.step_status[:failed])
+
+  status 204
+end
 
 
 ###
@@ -76,7 +124,7 @@ helpers do
     query += "  ?step a <#{PWO.Step}> ; "
     query += "    <#{PIP.code}> '#{step_code.downcase}' . "
     query += " }"
-    query(query)    
+    query(query)
   end
 
   def select_step_by_code(step_code)
@@ -84,7 +132,7 @@ helpers do
     query += "  ?step a <#{PWO.Step}> ; "
     query += "    <#{PIP.code}> '#{step_code.downcase}' . "
     query += " }"
-    query(query)    
+    query(query)
   end
 
   def ask_if_previous_steps_are_not_done(step_code)
@@ -98,7 +146,7 @@ helpers do
     query += "    <#{PIP.order}> ?prev_sequence ; "
     query += "    <#{PIP.status}> ?prev_status . "
     query += "  FILTER(?prev_sequence < ?sequence) "
-    query += "  FILTER(?prev_status != '#{settings.step_status[:done]}') "
+    query += "  FILTER(?prev_status != '#{settings.step_status[:done]}' && ?prev_status != '#{settings.step_status[:ready]}) "
     query += " }"
     query(query)
   end
@@ -127,6 +175,5 @@ helpers do
     delete_step_status(step)
     insert_step_status(step, status)
   end
-  
-end
 
+end
