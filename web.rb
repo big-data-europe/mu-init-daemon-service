@@ -146,7 +146,7 @@ helpers do
     query += "    <#{PIP.order}> ?prev_sequence ; "
     query += "    <#{PIP.status}> ?prev_status . "
     query += "  FILTER(?prev_sequence < ?sequence) "
-    query += "  FILTER(?prev_status != '#{settings.step_status[:done]}' && ?prev_status != '#{settings.step_status[:ready]}) "
+    query += "  FILTER(?prev_status != '#{settings.step_status[:done]}' && ?prev_status != '#{settings.step_status[:ready]}') "
     query += " }"
     query(query)
   end
