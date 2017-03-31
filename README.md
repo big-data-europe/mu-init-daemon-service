@@ -27,7 +27,7 @@ Validate if a given step (specified by its code) of a pipeline can be started. T
 
 _E.g. /canStart?step="hdfs_init"_
 
-### PUT /boot
+#### PUT /boot
 Starts the booting of a step in the pipeline.  The step is specified through the step query param. Returns `204` on success.
 
 _E.g. /boot?step="hdfs_init"_
