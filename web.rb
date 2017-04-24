@@ -165,7 +165,7 @@ helpers do
     query += "	{ "
     query += "		SELECT * WHERE "
     query += "		{ "
-    query += "			?start <http://ontology.aksw.org/dockcontainer/label> ?label . "
+    query += "			?start <http://ontology.aksw.org/dockcontainer/env> ?label . "
     query += "			BIND(STRAFTER(STR(?label), 'INIT_DAEMON_STEP=') AS ?step) "
     query += "			FILTER(STR(?step) = '#{step_code.downcase}') "
     query += "			?container <http://ontology.aksw.org/dockevent/container> ?start . "
