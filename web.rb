@@ -9,8 +9,6 @@ end
 PWO = RDF::Vocabulary.new('http://purl.org/spar/pwo/')
 PIP = RDF::Vocabulary.new('http://www.big-data-europe.eu/vocabularies/pipeline/')
 
-
-
 ###
 # Validate if a given step (specified by its code) of a pipeline can be started.
 # The step is specified through the step query param.
@@ -22,8 +20,11 @@ get '/canStart' do
   error('Step query parameter is required') if params['step'].nil? or params['step'].empty?
   error("No step found with code '#{params['step']}'") if not ask_if_step_code_exists(params['step'])
 
+  # Checks if we should try to discover the status of a step from the health check of a container
+  unless ENV["CHECK_HEALTH_STATUS"].nil? or ENV["CHECK_HEALTH_STATUS"].downcase == "false"
+    check_and_update_step_through_health_status(params['step'])
+  end
   previous_steps_are_done = !ask_if_previous_steps_are_not_done(params['step'])
-
   (previous_steps_are_done).to_s
 end
 
@@ -148,6 +149,40 @@ helpers do
     query += "  FILTER(?prev_sequence < ?sequence) "
     query += "  FILTER(?prev_status != '#{settings.step_status[:done]}' && ?prev_status != '#{settings.step_status[:ready]}') "
     query += " }"
+    query(query)
+  end
+
+  def check_and_update_step_through_health_status(step_code)
+    if ask_if_step_is_done_through_health_status(step_code, ENV["HEALTH_STATUS_VALUE"])
+      update_step_status(step_code, settings.step_status[:ready])
+    end
+  end
+
+  def ask_if_step_is_done_through_health_status(step_code, health_status)
+    query = "ASK "
+    query += "WHERE "
+    query += "{ "
+    query += "	{ "
+    query += "		SELECT * WHERE "
+    query += "		{ "
+    query += "			?start <http://ontology.aksw.org/dockcontainer/label> ?label . "
+    query += "			BIND(STRAFTER(STR(?label), 'INIT_DAEMON_STEP=') AS ?step) "
+    query += "			FILTER(STR(?step) = '#{step_code.downcase}') "
+    query += "			?container <http://ontology.aksw.org/dockevent/container> ?start . "
+    query += "			?container <http://ontology.aksw.org/dockevent/source> ?source . "
+    query += "			?health <http://ontology.aksw.org/dockevent/source> ?source . "
+    query += "			?health a <http://ontology.aksw.org/dockevent/types/event> . "
+    query += "			?health <http://ontology.aksw.org/dockevent/action> <http://ontology.aksw.org/dockevent/actions/health_status> . "
+    query += "			?health <http://ontology.aksw.org/dockevent/timeNano> ?timestamp . "
+    query += "		} "
+    query += "		ORDER BY DESC(?timestamp) "
+    unless ENV["CHECK_ONLY_LATEST_HEALTHCHECK"].nil? or ENV["CHECK_ONLY_LATEST_HEALTHCHECK"].downcase == "false"
+      query += "		LIMIT 1 "
+    end
+    query += "	} "
+    query += "	?health <http://ontology.aksw.org/dockevent/actionExtra> ?status . "
+    query += "	FILTER(STR(?status) IN ('#{health_status}')) "
+    query += "} "
     query(query)
   end
 
