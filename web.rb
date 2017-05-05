@@ -8,7 +8,11 @@ end
 
 PWO = RDF::Vocabulary.new('http://purl.org/spar/pwo/')
 PIP = RDF::Vocabulary.new('http://www.big-data-europe.eu/vocabularies/pipeline/')
-
+DC = RDF::Vocabulary.new('http://ontology.aksw.org/dockcontainer/')
+DE = RDF::Vocabulary.new('http://ontology.aksw.org/dockevent/')
+DEA = RDF::Vocabulary.new('http://ontology.aksw.org/dockevent/actions/')
+DEAHS = RDF::Vocabulary.new('http://ontology.aksw.org/dockevent/actions/health_status')
+DET = RDF::Vocabulary.new('http://ontology.aksw.org/dockevent/types/')
 ###
 # Validate if a given step (specified by its code) of a pipeline can be started.
 # The step is specified through the step query param.
@@ -22,7 +26,7 @@ get '/canStart' do
 
   # Checks if we should try to discover the status of a step from the health check of a container
   unless ENV["CHECK_HEALTH_STATUS"].nil? or ENV["CHECK_HEALTH_STATUS"].downcase == "false"
-    check_and_update_step_through_health_status(params['step'])
+    check_and_update_steps_through_health_status(params['step'])
   end
   previous_steps_are_done = !ask_if_previous_steps_are_not_done(params['step'])
   (previous_steps_are_done).to_s
@@ -152,38 +156,54 @@ helpers do
     query(query)
   end
 
-  def check_and_update_step_through_health_status(step_code)
-    if ask_if_step_is_done_through_health_status(step_code, ENV["HEALTH_STATUS_VALUE"])
-      update_step_status(step_code, settings.step_status[:ready])
-    end
-  end
+  # TODO : check why DEA.health_status doesn't work => had to create a new entry in the dictionary
+  # TODO : step status should be provided probably by ENV variable
+  def check_and_update_steps_through_health_status(step_code)
+    step_status = settings.step_status[:ready]
+    health_status = ENV["HEALTH_STATUS_VALUE"]
+    check_only_latest_healthcheck = ENV["CHECK_ONLY_LATEST_HEALTHCHECK"].downcase != "false"
 
-  def ask_if_step_is_done_through_health_status(step_code, health_status)
-    query = "ASK "
-    query += "WHERE "
-    query += "{ "
-    query += "	{ "
-    query += "		SELECT * WHERE "
-    query += "		{ "
-    query += "			?start <http://ontology.aksw.org/dockcontainer/env> ?label . "
-    query += "			BIND(STRAFTER(STR(?label), 'INIT_DAEMON_STEP=') AS ?step) "
-    query += "			FILTER(STR(?step) = '#{step_code.downcase}') "
-    query += "			?container <http://ontology.aksw.org/dockevent/container> ?start . "
-    query += "			?container <http://ontology.aksw.org/dockevent/source> ?source . "
-    query += "			?health <http://ontology.aksw.org/dockevent/source> ?source . "
-    query += "			?health a <http://ontology.aksw.org/dockevent/types/event> . "
-    query += "			?health <http://ontology.aksw.org/dockevent/action> <http://ontology.aksw.org/dockevent/actions/health_status> . "
-    query += "			?health <http://ontology.aksw.org/dockevent/timeNano> ?timestamp . "
-    query += "		} "
-    query += "		ORDER BY DESC(?timestamp) "
-    unless ENV["CHECK_ONLY_LATEST_HEALTHCHECK"].nil? or ENV["CHECK_ONLY_LATEST_HEALTHCHECK"].downcase == "false"
-      query += "		LIMIT 1 "
+    query = "WITH <#{settings.graph}> "
+    query += " DELETE {?prev_step <#{PIP.status}> ?prev_status .} "
+    query += " INSERT {?prev_step <#{PIP.status}> '#{step_status}' .} "
+    query += " WHERE { "
+    query += " 	?pipeline a <#{PWO.Workflow}> ;  "
+    query += " 		<#{PWO.hasStep}> ?current_step, ?prev_step .  "
+    query += " 	?current_step a <#{PWO.Step}> ;  "
+    query += " 		<#{PIP.code}> '#{step_code.downcase}' ; "
+    query += " 		<#{PIP.order}> ?sequence . "
+    query += " 	?prev_step a <#{PWO.Step}> ;  "
+    query += " 		<#{PIP.code}> ?step_code ; "
+    query += " 		<#{PIP.order}> ?prev_sequence ; "
+    query += " 		<#{PIP.status}> ?prev_status . "
+    query += " 	FILTER(?prev_sequence < ?sequence) "
+    # there's no point in going further if the step is already in the correct state
+    query += " 	FILTER(?prev_status != '#{step_status}') "
+
+    query += " 	?start_event <#{DC.env}> ?label . "
+    query += " 	BIND(STRAFTER(STR(?label), 'INIT_DAEMON_STEP=') AS ?container_step_code) "
+    query += " 	FILTER(STR(?step_code) = STR(?container_step_code)) "
+    query += " 	?container_event <#{DE.container}> ?start_event . "
+    query += " 	?container_event <#{DE.source}> ?source . "
+    query += " 	{ "
+    query += " 		SELECT ?status ?timestamp "
+    query += " 		WHERE "
+    query += " 		{ "
+    query += " 			?health_event <#{DE.source}> ?source ; "
+    query += " 			 a <#{DET.event}> ; "
+    query += " 			 <#{DE.action}> <#{DEAHS}> ; "
+    query += " 			 <#{DE.actionExtra}> ?status ; "
+    query += " 			 <#{DE.timeNano}> ?timestamp . "
+    query += " 		} "
+    query += " 		ORDER BY DESC(?timestamp) "
+    if check_only_latest_healthcheck
+      query += " 		LIMIT 1 "
     end
-    query += "	} "
-    query += "	?health <http://ontology.aksw.org/dockevent/actionExtra> ?status . "
-    query += "	FILTER(STR(?status) IN ('#{health_status}')) "
-    query += "} "
-    query(query)
+    query += " 	} "
+    query += " 	FILTER(?status = '#{health_status}') "
+    query += " } "
+
+    update(query)
   end
 
   def delete_step_status(step)
