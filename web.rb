@@ -4,6 +4,7 @@ end
 
 ###
 # Vocabularies
+
 ###
 
 PWO = RDF::Vocabulary.new('http://purl.org/spar/pwo/')
@@ -157,15 +158,17 @@ helpers do
   end
 
   # TODO : check why DEA.health_status doesn't work => had to create a new entry in the dictionary
-  # TODO : step status should be provided probably by ENV variable
   def check_and_update_steps_through_health_status(step_code)
-    step_status = settings.step_status[:ready]
+    default_step_status = settings.step_status[:ready]
+    if settings.step_status.has_value?(ENV["DEFAULT_STEP_STATUS_WHEN_SUCCESSFUL"])
+      default_step_status = ENV["DEFAULT_STEP_STATUS_WHEN_SUCCESSFUL"]
+    end
     health_status = ENV["HEALTH_STATUS_VALUE"]
     check_only_latest_healthcheck = ENV["CHECK_ONLY_LATEST_HEALTHCHECK"].downcase != "false"
 
     query = "WITH <#{settings.graph}> "
     query += " DELETE {?prev_step <#{PIP.status}> ?prev_status .} "
-    query += " INSERT {?prev_step <#{PIP.status}> '#{step_status}' .} "
+    query += " INSERT {?prev_step <#{PIP.status}> ?success_status .} "
     query += " WHERE { "
     query += " 	?pipeline a <#{PWO.Workflow}> ;  "
     query += " 		<#{PWO.hasStep}> ?current_step, ?prev_step .  "
@@ -178,11 +181,20 @@ helpers do
     query += " 		<#{PIP.status}> ?prev_status . "
     query += " 	FILTER(?prev_sequence < ?sequence) "
     # there's no point in going further if the step is already in the correct state
-    query += " 	FILTER(?prev_status != '#{step_status}') "
+    # query += " 	FILTER(?prev_status != '#{default_step_status}') "
 
-    query += " 	?start_event <#{DC.env}> ?label . "
-    query += " 	BIND(STRAFTER(STR(?label), 'INIT_DAEMON_STEP=') AS ?container_step_code) "
+    query += " 	?start_event <#{DC.env}> ?env_step . "
+    query += "  FILTER(STRSTARTS(STR(?env_step), 'INIT_DAEMON_STEP=')) "
+    query += " 	BIND(STRAFTER(STR(?env_step), 'INIT_DAEMON_STEP=') AS ?container_step_code) "
     query += " 	FILTER(STR(?step_code) = STR(?container_step_code)) "
+
+    query += "  OPTIONAL{ "
+    query += "    ?start_event <#{DC.env}> ?env_status . "
+    query += "    FILTER(STRSTARTS(STR(?env_status), 'INIT_DAEMON_STEP_STATUS_WHEN_SUCCESSFUL=')) "
+    query += "    BIND(STRAFTER(STR(?env_status), 'INIT_DAEMON_STEP_STATUS_WHEN_SUCCESSFUL=') AS ?container_step_status) "
+    query += "  } "
+    query += "BIND(IF(BOUND(?container_step_status), STR(?container_step_status), '#{default_step_status}') AS ?success_status) "
+
     query += " 	?container_event <#{DE.container}> ?start_event . "
     query += " 	?container_event <#{DE.source}> ?source . "
     query += " 	{ "
