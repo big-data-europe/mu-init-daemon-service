@@ -4,9 +4,6 @@ end
 
 ###
 # Vocabularies
-
-###
-
 PWO = RDF::Vocabulary.new('http://purl.org/spar/pwo/')
 PIP = RDF::Vocabulary.new('http://www.big-data-europe.eu/vocabularies/pipeline/')
 DC = RDF::Vocabulary.new('http://ontology.aksw.org/dockcontainer/')
@@ -14,6 +11,8 @@ DE = RDF::Vocabulary.new('http://ontology.aksw.org/dockevent/')
 DEA = RDF::Vocabulary.new('http://ontology.aksw.org/dockevent/actions/')
 DEAHS = RDF::Vocabulary.new('http://ontology.aksw.org/dockevent/actions/health_status')
 DET = RDF::Vocabulary.new('http://ontology.aksw.org/dockevent/types/')
+###
+
 ###
 # Validate if a given step (specified by its code) of a pipeline can be started.
 # The step is specified through the step query param.
@@ -158,6 +157,8 @@ helpers do
   end
 
   # TODO : check why DEA.health_status doesn't work => had to create a new entry in the dictionary
+  # TODO : write doc
+  # TODO : stop query if ?prev_status is already ?success_status
   def check_and_update_steps_through_health_status(step_code)
     default_step_status = settings.step_status[:ready]
     if settings.step_status.has_value?(ENV["DEFAULT_STEP_STATUS_WHEN_SUCCESSFUL"])
@@ -180,8 +181,6 @@ helpers do
     query += " 		<#{PIP.order}> ?prev_sequence ; "
     query += " 		<#{PIP.status}> ?prev_status . "
     query += " 	FILTER(?prev_sequence < ?sequence) "
-    # there's no point in going further if the step is already in the correct state
-    # query += " 	FILTER(?prev_status != '#{default_step_status}') "
 
     query += " 	?start_event <#{DC.env}> ?env_step . "
     query += "  FILTER(STRSTARTS(STR(?env_step), 'INIT_DAEMON_STEP=')) "
@@ -194,6 +193,9 @@ helpers do
     query += "    BIND(STRAFTER(STR(?env_status), 'INIT_DAEMON_STEP_STATUS_WHEN_SUCCESSFUL=') AS ?container_step_status) "
     query += "  } "
     query += "BIND(IF(BOUND(?container_step_status), STR(?container_step_status), '#{default_step_status}') AS ?success_status) "
+
+    # there's no point in going further if the step is already in the correct state
+    query += " 	FILTER(?prev_status != ?success_status) "
 
     query += " 	?container_event <#{DE.container}> ?start_event . "
     query += " 	?container_event <#{DE.source}> ?source . "
