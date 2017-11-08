@@ -75,3 +75,62 @@ Add rules to the `dispatcher.ex` to dispatch requests to the init-daemon service
 ```
 
 More information how to setup a mu.semte.ch project can be found in [mu-project](https://github.com/mu-semtech/mu-project).
+
+## Using the init-daemon with the [delta-service](https://github.com/mu-semtech/mu-delta-service) and the [mu-swarm-logger-service](https://github.com/big-data-europe/mu-swarm-logger-service)
+This allows you to mark a service as being observable by the init-daemon, which will figure out the status of a service through a health check.
+
+To enable this, you need the following:
+* An instance of the [delta-service](https://github.com/mu-semtech/mu-delta-service), configured to warn the init-daemon of any effective changes.
+To do so, just add this `http://initdaemon/process_delta` in the subscribers.json configuration file for the delta service.
+
+Example subscribers.json
+```
+{
+  "potentials":[
+  ],
+  "effectives":[
+    "http://initdaemon/process_delta"
+  ]
+}
+```
+* An instance of the [mu-swarm-logger-service](https://github.com/big-data-europe/mu-swarm-logger-service), configured to write logs through the delta-service, instead of the database directly.
+```
+logger:
+  build: ./mu-swarm-logger-service/
+  links:
+    - delta:database
+```
+* An instance of your service, with the following configuration
+In order to make it observable by the logger:
+```
+labels:
+  - "LOG=1"
+```
+
+To specify which step is assigned to this service:
+```
+environment:
+  INIT_DAEMON_STEP: step_1
+```
+You can also specify what status should be set following a healthy or an unhealthy health check.
+```
+environment:
+  INIT_DAEMON_STEP_STATUS_WHEN_HEALTHY: done
+  INIT_DAEMON_STEP_STATUS_WHEN_UNHEALTHY: failed
+```
+
+The default status for a healthy check is 'ready'.
+The default status for an unhealthy check is 'failed'.
+You can override this by changing the ENV variables of the init-daemon, using these names:
+```
+environment:
+  DEFAULT_STEP_STATUS_WHEN_HEALTHY: foo
+  DEFAULT_STEP_STATUS_WHEN_UNHEALTHY: bar
+```
+
+If, for any reason, the init-daemon should stop to try and verify health checks, you can just set this ENV variable to "false":
+```
+environment:
+  CHECK_HEALTH_STATUS: false
+```
+
