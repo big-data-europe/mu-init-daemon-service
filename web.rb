@@ -26,10 +26,13 @@ post '/process_delta' do
 
       process_delta(body['delta'][0]['inserts'])
       status 204
-    rescue
-      log.error "Exception occurred when trying to process delta"
+
+    rescue Exception => e
+      log.error "Exception occurred when trying to process delta: #{e.message}"
+      log.error "Stacktrace : #{e.backtrace.inspect}"
+      request.body.rewind
+      log.error "Body : #{request.body.read}"
       error("Exception occurred when trying to process delta")
-      status 500
     end
   else
     log.debug "Ignoring process delta, as [CHECK_HEALTH_STATUS] is false"
@@ -158,6 +161,20 @@ helpers do
     log.info "Processing health check for URI <#{uri}>"
     default_step_status_healthy = ENV["DEFAULT_STEP_STATUS_WHEN_HEALTHY"]
     default_step_status_unhealthy = ENV["DEFAULT_STEP_STATUS_WHEN_UNHEALTHY"]
+
+    ensure_query = " # not checking if previous steps are completed "
+    if ENV["ENSURE_PREVIOUS_STEPS_ARE_COMPLETED"]
+      ensure_query = " # checking if previous steps are completed
+        FILTER NOT EXISTS {
+          ?workflow <#{PWO.hasStep}> ?step, ?prev_step .
+          ?step <#{PIP.order}> ?sequence .
+          ?prev_step <#{PIP.order}> ?prev_sequence .
+          FILTER(?sequence > ?prev_sequence)
+          ?prev_step <#{PIP.status}> ?prev_status .
+          FILTER(?prev_status != '#{settings.step_status[:done]}' && ?prev_status != '#{settings.step_status[:ready]}')
+      }"
+    end
+
     query = "WITH <#{settings.graph}>
     DELETE
     {
@@ -188,6 +205,8 @@ helpers do
       ?step <#{PIP.code}> ?step_code ;
         a <#{PWO.Step}> ;
       <#{PIP.status}> ?old_status .
+
+      #{ensure_query}
 
       # getting status to apply if healthy
       OPTIONAL{
