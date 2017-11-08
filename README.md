@@ -63,6 +63,13 @@ initdaemon:
     - database:database
 ```
 
+Environment variables can be provided to change the behavior of the service.
+```
+CHECK_HEALTH_STATUS : Whether the microservice should try to discover the status of a step by analyzing the docker logs. Defaults to "false".
+HEALTH_STATUS_VALUE : The value the microservice should compare against for the health check . Defaults to "healthy".
+CHECK_ONLY_LATEST_HEALTHCHECK : Whether the microservice should only check the latest log for the specified step. Otherwise, it checks if, at any point, the container was in a state HEALTH_STATUS_VALUE. Defaults to "false".
+```
+
 `database` must be another service defined in your `docker-compose.yml` running a triple store (e.g. [Virtuoso](https://hub.docker.com/r/tenforce/virtuoso/))
 
 

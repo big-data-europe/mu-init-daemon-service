@@ -4,12 +4,14 @@ end
 
 ###
 # Vocabularies
-###
-
 PWO = RDF::Vocabulary.new('http://purl.org/spar/pwo/')
 PIP = RDF::Vocabulary.new('http://www.big-data-europe.eu/vocabularies/pipeline/')
-
-
+DC = RDF::Vocabulary.new('http://ontology.aksw.org/dockcontainer/')
+DE = RDF::Vocabulary.new('http://ontology.aksw.org/dockevent/')
+DEA = RDF::Vocabulary.new('http://ontology.aksw.org/dockevent/actions/')
+DEAHS = RDF::Vocabulary.new('http://ontology.aksw.org/dockevent/actions/health_status')
+DET = RDF::Vocabulary.new('http://ontology.aksw.org/dockevent/types/')
+###
 
 ###
 # Validate if a given step (specified by its code) of a pipeline can be started.
@@ -22,8 +24,11 @@ get '/canStart' do
   error('Step query parameter is required') if params['step'].nil? or params['step'].empty?
   error("No step found with code '#{params['step']}'") if not ask_if_step_code_exists(params['step'])
 
+  # Checks if we should try to discover the status of a step from the health check of a container
+  unless ENV["CHECK_HEALTH_STATUS"].nil? or ENV["CHECK_HEALTH_STATUS"].downcase == "false"
+    check_and_update_steps_through_health_status(params['step'])
+  end
   previous_steps_are_done = !ask_if_previous_steps_are_not_done(params['step'])
-
   (previous_steps_are_done).to_s
 end
 
@@ -149,6 +154,70 @@ helpers do
     query += "  FILTER(?prev_status != '#{settings.step_status[:done]}' && ?prev_status != '#{settings.step_status[:ready]}') "
     query += " }"
     query(query)
+  end
+
+  # TODO : check why DEA.health_status doesn't work => had to create a new entry in the dictionary
+  # TODO : write doc
+  # TODO : stop query if ?prev_status is already ?success_status
+  def check_and_update_steps_through_health_status(step_code)
+    default_step_status = settings.step_status[:ready]
+    if settings.step_status.has_value?(ENV["DEFAULT_STEP_STATUS_WHEN_SUCCESSFUL"])
+      default_step_status = ENV["DEFAULT_STEP_STATUS_WHEN_SUCCESSFUL"]
+    end
+    health_status = ENV["HEALTH_STATUS_VALUE"]
+    check_only_latest_healthcheck = ENV["CHECK_ONLY_LATEST_HEALTHCHECK"].downcase != "false"
+
+    query = "WITH <#{settings.graph}> "
+    query += " DELETE {?prev_step <#{PIP.status}> ?prev_status .} "
+    query += " INSERT {?prev_step <#{PIP.status}> ?success_status .} "
+    query += " WHERE { "
+    query += " 	?pipeline a <#{PWO.Workflow}> ;  "
+    query += " 		<#{PWO.hasStep}> ?current_step, ?prev_step .  "
+    query += " 	?current_step a <#{PWO.Step}> ;  "
+    query += " 		<#{PIP.code}> '#{step_code.downcase}' ; "
+    query += " 		<#{PIP.order}> ?sequence . "
+    query += " 	?prev_step a <#{PWO.Step}> ;  "
+    query += " 		<#{PIP.code}> ?step_code ; "
+    query += " 		<#{PIP.order}> ?prev_sequence ; "
+    query += " 		<#{PIP.status}> ?prev_status . "
+    query += " 	FILTER(?prev_sequence < ?sequence) "
+
+    query += " 	?start_event <#{DC.env}> ?env_step . "
+    query += "  FILTER(STRSTARTS(STR(?env_step), 'INIT_DAEMON_STEP=')) "
+    query += " 	BIND(STRAFTER(STR(?env_step), 'INIT_DAEMON_STEP=') AS ?container_step_code) "
+    query += " 	FILTER(STR(?step_code) = STR(?container_step_code)) "
+
+    query += "  OPTIONAL{ "
+    query += "    ?start_event <#{DC.env}> ?env_status . "
+    query += "    FILTER(STRSTARTS(STR(?env_status), 'INIT_DAEMON_STEP_STATUS_WHEN_SUCCESSFUL=')) "
+    query += "    BIND(STRAFTER(STR(?env_status), 'INIT_DAEMON_STEP_STATUS_WHEN_SUCCESSFUL=') AS ?container_step_status) "
+    query += "  } "
+    query += "BIND(IF(BOUND(?container_step_status), STR(?container_step_status), '#{default_step_status}') AS ?success_status) "
+
+    # there's no point in going further if the step is already in the correct state
+    query += " 	FILTER(?prev_status != ?success_status) "
+
+    query += " 	?container_event <#{DE.container}> ?start_event . "
+    query += " 	?container_event <#{DE.source}> ?source . "
+    query += " 	{ "
+    query += " 		SELECT ?status ?timestamp "
+    query += " 		WHERE "
+    query += " 		{ "
+    query += " 			?health_event <#{DE.source}> ?source ; "
+    query += " 			 a <#{DET.event}> ; "
+    query += " 			 <#{DE.action}> <#{DEAHS}> ; "
+    query += " 			 <#{DE.actionExtra}> ?status ; "
+    query += " 			 <#{DE.timeNano}> ?timestamp . "
+    query += " 		} "
+    query += " 		ORDER BY DESC(?timestamp) "
+    if check_only_latest_healthcheck
+      query += " 		LIMIT 1 "
+    end
+    query += " 	} "
+    query += " 	FILTER(?status = '#{health_status}') "
+    query += " } "
+
+    update(query)
   end
 
   def delete_step_status(step)
