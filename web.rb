@@ -26,7 +26,8 @@ post '/process_delta' do
 
       process_delta(body['delta'][0]['inserts'])
       status 204
-    rescue
+    rescue StandardError => e
+      log.debug "Exception : #{e}"
       log.error "Exception occurred when trying to process delta"
       error("Exception occurred when trying to process delta")
       status 500
@@ -158,6 +159,7 @@ helpers do
     log.info "Processing health check for URI <#{uri}>"
     default_step_status_healthy = ENV["DEFAULT_STEP_STATUS_WHEN_HEALTHY"]
     default_step_status_unhealthy = ENV["DEFAULT_STEP_STATUS_WHEN_UNHEALTHY"]
+    default_use_init_daemon = "true"
     query = "WITH <#{settings.graph}>
     DELETE
     {
@@ -188,6 +190,15 @@ helpers do
       ?step <#{PIP.code}> ?step_code ;
         a <#{PWO.Step}> ;
       <#{PIP.status}> ?old_status .
+
+      # making sure the service does not refuse to let the init-daemon checks its status through health checks
+      OPTIONAL{
+        ?start_event <http://ontology.aksw.org/dockcontainer/env> ?container_env_use_init_daemon .
+        FILTER(STRSTARTS(STR(?container_env_use_init_daemon), 'INIT_DAEMON_CHECK_HEALTH_STATUS='))
+        BIND(STRAFTER(STR(?container_env_use_init_daemon), 'INIT_DAEMON_CHECK_HEALTH_STATUS=') AS ?container_use_init_daemon)
+      }
+      BIND(IF(BOUND(?container_use_init_daemon), STR(?container_use_init_daemon), '#{default_use_init_daemon}') AS ?use_init_daemon)
+      FILTER(?use_init_daemon = 'true')
 
       # getting status to apply if healthy
       OPTIONAL{

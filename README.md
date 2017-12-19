@@ -119,6 +119,12 @@ environment:
   INIT_DAEMON_STEP_STATUS_WHEN_UNHEALTHY: failed
 ```
 
+You can set whether the initdaemon should ignore the healthchecks coming from a specific service by giving that service the following environment variable:
+```
+environment:
+  INIT_DAEMON_CHECK_HEALTH_STATUS: "false"
+```
+
 The default status for a healthy check is 'ready'.
 The default status for an unhealthy check is 'failed'.
 You can override this by changing the ENV variables of the init-daemon, using these names:
